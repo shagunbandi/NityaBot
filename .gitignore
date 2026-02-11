@@ -1,0 +1,25 @@
+# Secrets
+config/.env
+
+# OpenClaw runtime
+.openclaw/
+
+# Built/deployed apps (user data)
+apps/
+
+# Shared runtime data
+shared/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (if any local tooling)
+node_modules/
