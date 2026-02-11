@@ -1,6 +1,6 @@
 ---
 name: app-builder
-description: Plan and build full applications from user descriptions. Handles tech stack decisions, code generation via sub-agents, Dockerfile creation, and deployment orchestration.
+description: Plan and build full applications from user descriptions. Handles tech stack decisions, code generation via sub-agents, Dockerfile creation, and deployment orchestration via the Deployer API.
 metadata: {"openclaw":{"always":true}}
 ---
 
@@ -25,12 +25,15 @@ When the user asks you to:
 
 4. **Dockerize**: Spawn a sub-agent to create a `Dockerfile` in the app directory. Use multi-stage builds for compiled apps. Serve web apps via nginx.
 
-5. **Deploy**: Spawn a sub-agent to run:
+5. **Deploy**: Spawn a sub-agent to call the Deployer API:
    ```bash
-   bash ~/clawbot/deploy-scripts/deploy-app.sh <app-name> <port>
+   curl -s -X POST http://deployer:5000/deploy \
+     -H "Content-Type: application/json" \
+     -d '{"app_name": "<app-name>", "port": <port>}'
    ```
+   **NEVER run Docker commands directly. You have no Docker access.**
 
-6. **Deliver**: Tell the user the live URL.
+6. **Deliver**: Tell the user the live URL from the deployer's response.
 
 ## Task breakdown guidelines
 
@@ -68,4 +71,18 @@ This file should export two functions:
    - value compounds monthly
 
 Use TypeScript. No external dependencies.
+```
+
+## Example deploy sub-agent task
+
+```
+The app code is ready in ~/clawbot/apps/sip-calc/ with a Dockerfile.
+
+Deploy it by running:
+  curl -s -X POST http://deployer:5000/deploy \
+    -H "Content-Type: application/json" \
+    -d '{"app_name": "sip-calc", "port": 80}'
+
+Report the full JSON response back to me.
+If it fails, include the "output" field so I can diagnose the issue.
 ```

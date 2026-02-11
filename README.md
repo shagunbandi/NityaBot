@@ -12,6 +12,7 @@ This is a shareable configuration layer on top of [OpenClaw](https://openclaw.ai
 
 It provides:
 - **Custom skills** that teach OpenClaw how to build, dockerize, and deploy full applications
+- **A deployer sidecar** (Flask API) that safely handles Docker operations
 - **Deploy scripts** that handle Docker and Cloudflare DNS
 - **OpenClaw config** with Opus (architect) + Haiku (developers) model routing
 - **AGENTS.md** instructions that define the build-and-deploy workflow
@@ -19,13 +20,45 @@ It provides:
 
 ## Prerequisites
 
-1. **A Raspberry Pi** (or any Linux machine) with Docker installed
+1. **A Raspberry Pi** (or any Linux machine) with **Docker** and **docker compose** installed
 2. **Traefik** already running as a reverse proxy
 3. **Cloudflare** account with API access for your domain
-4. **Node.js >= 22** installed
+4. **jq** installed (`sudo apt install jq`)
 5. **A Claude Pro/Max subscription** (for Anthropic auth via `claude setup-token`)
 
 ## How It Works
+
+### Architecture
+
+```
+You (WhatsApp)
+  │
+  ▼
+┌──────────────────────────────────────────────────────┐
+│  Docker Network (openclaw_network)                   │
+│                                                      │
+│  ┌──────────────────┐  HTTP   ┌──────────────────┐  │
+│  │  OpenClaw         │ -----> │  Deployer         │  │
+│  │  Container        │        │  (Flask sidecar)  │  │
+│  │                   │        │                   │  │
+│  │  - Opus + Haiku   │        │  - Docker socket  │  │
+│  │  - Writes code    │        │  - Runs scripts   │  │
+│  │  - NO Docker      │        │  - Builds images  │  │
+│  │    access          │        │  - Starts apps    │  │
+│  └──────────────────┘        └──────────────────┘  │
+│         │                           │               │
+│         ▼                           ▼               │
+│    apps/ (shared volume)     Docker Daemon (host)   │
+└──────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+                              App Containers + Traefik
+                                      │
+                                      ▼
+                              https://app.yourdomain.com
+```
+
+**OpenClaw has ZERO Docker access.** It writes code to a shared `apps/` volume and calls the deployer sidecar via HTTP. The deployer is the only container with the Docker socket -- and it only exposes 4 whitelisted operations.
 
 ### The Full Picture
 
@@ -33,7 +66,7 @@ It provides:
 You (WhatsApp): "Create a SIP Calculator application"
   │
   ▼
-Opus (Architect) ─── thinks, plans, decides
+Opus (Architect) ── thinks, plans, decides
   │
   ├─ Opus asks you via WhatsApp: "Should it have graphs?
   │   Monthly/yearly projections? What currency?"
@@ -52,8 +85,8 @@ Opus (Architect) ─── thinks, plans, decides
   │   ┌─ Haiku #1: "Write the SIP calculation logic in utils/sip.ts"
   │   ├─ Haiku #2: "Write the React components for the calculator form"
   │   ├─ Haiku #3: "Write the chart component using Recharts"
-  │   ├─ Haiku #4: "Create the Dockerfile and docker-compose.yml"
-  │   └─ Haiku #5: "Run deploy-app.sh sip-calculator 3000"
+  │   ├─ Haiku #4: "Create the Dockerfile"
+  │   └─ Haiku #5: "Call deployer API: POST /deploy {sip-calculator, 80}"
   │
   ├─ Opus reviews the results from each sub-agent
   │
@@ -66,7 +99,7 @@ You (WhatsApp): "Your SIP Calculator is live at https://sip.yourdomain.com"
 | Model | Role | What It Does | Cost |
 |-------|------|-------------|------|
 | **Opus 4.6** | Architect | Talks to you, plans the app, picks the tech stack, breaks work into small tasks, reviews results, handles errors | $15/1M tokens |
-| **Haiku 3.5** | Developer (x many) | Writes code files, creates Dockerfiles, runs tests, calls deploy scripts -- one small task per sub-agent | $0.25/1M tokens |
+| **Haiku 3.5** | Developer (x many) | Writes code files, creates Dockerfiles, calls deployer API -- one small task per sub-agent | $0.25/1M tokens |
 
 Opus is the senior engineer who plans and reviews. Haiku sub-agents are junior devs who each get one clear, small task.
 
@@ -77,7 +110,7 @@ Opus doesn't give Haiku a vague instruction like "build the app." It breaks work
 - "Write `src/utils/sip.ts` with functions `calculateSIP(monthly, rate, years)` and `calculateLumpsum(amount, rate, years)` that return month-by-month arrays"
 - "Write `src/components/SIPForm.tsx` - a form with inputs for monthly amount, expected return %, and time period. Use the `calculateSIP` function from `utils/sip.ts`"
 - "Create a `Dockerfile` that builds the React app and serves it with nginx on port 80"
-- "Run `bash ~/clawbot/deploy-scripts/deploy-app.sh sip-calculator 3000`"
+- "Call the deployer API: `curl -s -X POST http://deployer:5000/deploy -H 'Content-Type: application/json' -d '{\"app_name\": \"sip-calculator\", \"port\": 80}'`"
 
 Each Haiku sub-agent gets exactly what to do, what files to create, and what the output should look like. This keeps Haiku fast, cheap, and accurate.
 
@@ -87,62 +120,86 @@ Each Haiku sub-agent gets exactly what to do, what files to create, and what the
 1. PLAN        Opus decides tech stack, architecture, file structure
 2. CLARIFY     Opus asks user for missing requirements (via WhatsApp)
 3. BUILD       Haiku sub-agents write code (parallel where possible)
-4. DOCKERIZE   Haiku creates Dockerfile + docker-compose.yml
-5. DEPLOY      Haiku calls deploy-app.sh (creates DNS, starts container)
-6. VERIFY      Haiku checks the app is responding
+4. DOCKERIZE   Haiku creates Dockerfile
+5. DEPLOY      Haiku calls deployer API (creates DNS, builds image, starts container)
+6. VERIFY      Deployer checks the container is running
 7. DELIVER     Opus sends you the live URL on WhatsApp
 ```
 
 ### Security Model
 
-The actual infrastructure work (Docker, Cloudflare DNS) happens only through deploy scripts that run as your user. OpenClaw writes application code and calls scripts -- it doesn't manage Docker directly.
+OpenClaw runs in complete isolation. It has no Docker socket, no Docker CLI, and no host access.
 
 | What | How |
 |------|-----|
 | Writing app code | Haiku writes files into `~/clawbot/apps/<app-name>/` |
 | Creating Dockerfiles | Haiku writes the Dockerfile as part of the app |
-| Building & deploying | Haiku calls `deploy-scripts/deploy-app.sh` which runs Docker |
-| Creating DNS records | The deploy script calls Cloudflare API |
-| Stopping/managing apps | Via `deploy-scripts/stop-app.sh` and `status-app.sh` |
+| Building & deploying | Haiku calls `POST http://deployer:5000/deploy` |
+| Creating DNS records | The deployer's script calls Cloudflare API |
+| Stopping/managing apps | Via deployer API (`/stop`, `/status`, `/logs`) |
+
+| Resource | OpenClaw container | Deployer sidecar |
+|----------|-------------------|------------------|
+| Docker socket | NONE | mounted |
+| apps/ | read-write (writes code) | read-write (builds images) |
+| skills/ | read-only | none |
+| AGENTS.md | read-only | none |
+| shared/logs/ | read-write | read-write |
+| config/.env | NONE | read-only |
+| deploy-scripts/ | NONE | read-only, executable |
+| Host filesystem | NONE | NONE |
+| Network | internal Docker network | internal Docker network |
 
 ## Directory Structure
 
 ```
-~/clawbot/                          # OpenClaw workspace (this repo)
-├── setup.sh                        # One-command setup
+~/openclaw/                         # This repo
+├── setup.sh                        # One-command setup (orchestrator)
+├── setup/                          # Setup sub-scripts
+│   ├── check-prereqs.sh            # Verify Docker, jq, git, config
+│   ├── build-images.sh             # Clone OpenClaw, build Docker images
+│   ├── generate-compose.sh         # Create dirs, network, docker-compose.yml
+│   ├── onboard.sh                  # WhatsApp QR + Anthropic token
+│   ├── configure.sh                # Opus+Haiku model config
+│   └── start.sh                    # Start gateway + deployer
 ├── README.md                       # This file
 ├── .gitignore                      # Protects secrets
-├── AGENTS.md                       # Opus/Haiku workflow instructions
+├── docker-compose.yml              # Generated by setup (gitignored)
+├── .openclaw/                      # OpenClaw runtime (gitignored)
+├── .openclaw-src/                  # Cloned OpenClaw repo (gitignored)
 │
-├── config/
-│   ├── openclaw.json               # Opus + Haiku model routing
-│   ├── .env.example                # Template for secrets (shareable)
-│   └── .env                        # Your actual secrets (gitignored)
+├── openclaw-workspace/             # OpenClaw's workspace
+│   ├── skills/                     # OpenClaw skills
+│   │   ├── app-builder/
+│   │   ├── app-deployer/
+│   │   └── app-manager/
+│   └── AGENTS.md                   # Opus/Haiku workflow instructions
 │
-├── skills/                         # OpenClaw workspace skills
-│   ├── app-builder/
-│   │   └── SKILL.md                # Teaches Opus how to plan and build apps
-│   ├── app-deployer/
-│   │   └── SKILL.md                # Teaches Haiku how to deploy via scripts
-│   └── app-manager/
-│       └── SKILL.md                # Status checks, stop, logs
+├── deployer-workspace/             # Deployer's workspace
+│   ├── config/
+│   │   ├── openclaw.json           # Opus + Haiku model routing
+│   │   ├── .env.example            # Template for secrets (shareable)
+│   │   └── .env                    # Your actual secrets (gitignored)
+│   └── deploy-scripts/             # Run inside the deployer container
+│       ├── deploy-app.sh           # Build + DNS + deploy
+│       ├── stop-app.sh             # Stop and remove an app
+│       ├── status-app.sh           # List running apps
+│       └── logs-app.sh             # Tail logs for an app
 │
-├── deploy-scripts/                 # The only thing that touches Docker
-│   ├── deploy-app.sh               # Build + DNS + deploy
-│   ├── stop-app.sh                 # Stop and remove an app
-│   ├── status-app.sh               # List running apps
-│   └── logs-app.sh                 # Tail logs for an app
+├── deployer/                       # Flask sidecar (Docker access)
+│   ├── app.py                      # Flask API (4 endpoints)
+│   ├── Dockerfile                  # Sidecar image
+│   └── requirements.txt            # Flask dependency
 │
-├── apps/                           # Built apps live here (gitignored)
+├── apps/                           # Shared: Built apps live here (gitignored)
 │   └── sip-calculator/
 │       ├── src/                    # Application source code
 │       ├── Dockerfile              # Created by Haiku
 │       ├── docker-compose.yml      # Created by deploy script
 │       └── data/                   # Persistent app data
 │
-└── shared/                         # Shared across apps (gitignored)
-    ├── logs/                       # Deploy logs
-    └── templates/                  # Reusable boilerplate (optional)
+└── shared/                         # Shared: logs and temp files (gitignored)
+    └── logs/                       # Deploy logs
 ```
 
 ## Installation
@@ -150,21 +207,21 @@ The actual infrastructure work (Docker, Cloudflare DNS) happens only through dep
 ### 1. Clone this repo
 
 ```bash
-git clone <your-repo-url> ~/clawbot
-cd ~/clawbot
+git clone <your-repo-url> ~/openclaw
+cd ~/openclaw
 ```
 
 ### 2. Configure your secrets
 
 ```bash
-cp config/.env.example config/.env
-nano config/.env
+cp deployer-workspace/config/.env.example deployer-workspace/config/.env
+nano deployer-workspace/config/.env
 ```
 
 Fill in:
-- `CF_API_TOKEN` - Your Cloudflare API token
-- `CF_ZONE_ID` - Your domain's zone ID
-- `CF_BASE_DOMAIN` - Your domain (e.g., `yourdomain.com`). Subdomains CNAME to this.
+- `CF_API_TOKEN` - Your Cloudflare API token (needs Zone.Zone Read + Zone.DNS Edit permissions)
+- `CF_BASE_DOMAIN` - Your domain (e.g., `yourdomain.com`). Zone ID is looked up automatically.
+- `ALLOWED_ZONE_SUFFIX` - Usually same as `CF_BASE_DOMAIN`. Prevents deploying to arbitrary domains.
 
 ### 3. Run setup
 
@@ -174,17 +231,21 @@ chmod +x setup.sh
 ```
 
 The setup script will:
-1. Check that Docker, Node.js >= 22, and Traefik are running
-2. Install OpenClaw globally (`npm i -g openclaw`)
-3. **Pause for you** to run `openclaw onboard`:
+1. Check that Docker, docker compose, jq, and git are available
+2. Clone the [OpenClaw repo](https://github.com/openclaw/openclaw) and build the Docker image
+3. Build the deployer sidecar image
+4. Create the `openclaw_network` Docker network
+5. Generate a `docker-compose.yml` with OpenClaw + deployer sidecar
+6. **Pause for you** to run onboarding in a new terminal:
+   ```
+   docker compose run --rm openclaw-cli onboard --no-install-daemon
+   ```
    - Choose **Anthropic** as your provider
    - Authenticate with `claude setup-token`
    - Choose **WhatsApp** as your channel
    - **Scan the QR code** with your phone
-4. Copy `config/openclaw.json` into `~/.openclaw/openclaw.json`
-5. Set the OpenClaw workspace to `~/clawbot/`
-6. Create the `openclaw_network` Docker network
-7. Create `apps/` and `shared/` directories
+7. Copy the Opus+Haiku config
+8. Start the OpenClaw gateway + deployer sidecar
 
 ### 4. Verify
 
@@ -201,7 +262,7 @@ Hello! What can you help me build?
 Create a SIP Calculator application with graphs and INR support
 ```
 
-Opus will ask clarifying questions, plan the tech stack, spawn Haiku developers to write code, dockerize it, and deploy it. You get a live URL.
+Opus will ask clarifying questions, plan the tech stack, spawn Haiku developers to write code, dockerize it, and deploy it via the deployer API. You get a live URL.
 
 ### Build with specific tech
 
@@ -215,7 +276,7 @@ Build me a todo app using Go and HTMX, deploy it on port 8090
 Add a dark mode toggle to the SIP calculator
 ```
 
-Opus sees the app already exists in `apps/sip-calculator/`, plans the change, spawns Haiku to modify the code, rebuild, and redeploy.
+Opus sees the app already exists in `apps/sip-calculator/`, plans the change, spawns Haiku to modify the code, and calls the deployer API to rebuild and redeploy.
 
 ### Check what's running
 
@@ -302,7 +363,7 @@ Each sub-agent writes its assigned files using OpenClaw's file write tools, then
 **Turn 8 - Haiku sub-agent (deploy)**
 ```
 sessions_spawn: {
-  task: "Run: bash ~/clawbot/deploy-scripts/deploy-app.sh sip-calculator 3000. Report the output.",
+  task: "Deploy the app: curl -s -X POST http://deployer:5000/deploy -H 'Content-Type: application/json' -d '{\"app_name\": \"sip-calculator\", \"port\": 80}'. Report the full response.",
   model: "anthropic/claude-haiku-3-5"
 }
 ```
@@ -318,6 +379,7 @@ Opus collects all results, verifies deployment succeeded, and messages you on Wh
 - `config/.env.example` - Template for secrets
 - `skills/` - All custom skills
 - `deploy-scripts/` - Deploy scripts
+- `deployer/` - Flask sidecar source
 - `AGENTS.md` - Agent instructions
 - `setup.sh` - Setup automation
 
@@ -326,13 +388,15 @@ Opus collects all results, verifies deployment succeeded, and messages you on Wh
 - `config/.env` - Your actual API tokens
 - `apps/` - Built application code and data
 - `shared/` - Logs
-- `~/.openclaw/` - OpenClaw runtime, WhatsApp session, credentials
+- `.openclaw/` - OpenClaw runtime, WhatsApp session, credentials
+- `.openclaw-src/` - Cloned OpenClaw source code
+- `docker-compose.yml` - Generated compose file (contains gateway token)
 
 ### For someone else to use this
 
 ```bash
-git clone <your-repo-url> ~/clawbot
-cd ~/clawbot
+git clone <your-repo-url> ~/openclaw
+cd ~/openclaw
 cp config/.env.example config/.env
 nano config/.env   # fill in their own Cloudflare credentials + domain
 ./setup.sh         # installs OpenClaw, scan their own WhatsApp QR code
@@ -365,35 +429,46 @@ Traefik auto-discovers new apps and provisions HTTPS certificates.
 ### OpenClaw not responding on WhatsApp
 
 ```bash
-openclaw status          # Check gateway status
-openclaw doctor          # Diagnose issues
-openclaw logs            # View gateway logs
+docker compose logs -f openclaw-gateway    # View gateway logs
+docker compose restart openclaw-gateway    # Restart gateway
 ```
 
 ### WhatsApp disconnected
 
 ```bash
-openclaw channels login  # Re-scan QR code
+docker compose run --rm openclaw-cli channels login  # Re-scan QR code
+```
+
+### Deployer not responding
+
+```bash
+docker compose logs -f deployer            # View deployer logs
+docker compose restart deployer            # Restart deployer
+
+# Test deployer health
+docker compose exec openclaw-gateway curl -s http://deployer:5000/health
 ```
 
 ### App build failed
 
 ```bash
 # Check what Haiku produced
-ls ~/clawbot/apps/<app-name>/
+ls ~/openclaw/apps/<app-name>/
 
 # Check deploy logs
-cat ~/clawbot/shared/logs/deploy-*.log
+cat ~/openclaw/shared/logs/deploy-*.log
 
-# Test deploy script manually
-bash ~/clawbot/deploy-scripts/deploy-app.sh test-app 3000
+# Test deployer API directly
+docker compose exec openclaw-gateway curl -s -X POST http://deployer:5000/deploy \
+  -H "Content-Type: application/json" \
+  -d '{"app_name": "test-app", "port": 3000}'
 ```
 
 ### Token expired
 
 ```bash
-claude setup-token       # Re-authenticate with Anthropic
-openclaw models status   # Verify auth is working
+# Re-authenticate inside the container
+docker compose run --rm openclaw-cli models status
 ```
 
 ## Cost Estimates

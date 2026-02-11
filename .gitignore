@@ -1,13 +1,15 @@
 # Secrets
-config/.env
+deployer-workspace/config/.env
 
-# OpenClaw runtime
+# OpenClaw runtime and source
 .openclaw/
+.openclaw-src/
 
-# Built/deployed apps (user data)
+# Generated docker-compose (contains gateway token)
+docker-compose.yml
+
+# Shared folders (apps + logs)
 apps/
-
-# Shared runtime data
 shared/
 
 # OS files
@@ -21,5 +23,6 @@ Thumbs.db
 *.swo
 *~
 
-# Node (if any local tooling)
+# Node
 node_modules/
+package-lock.json
