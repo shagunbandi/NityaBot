@@ -1,14 +1,16 @@
 # Secrets
 deployer-workspace/config/.env
 
-# OpenClaw runtime and source
+# OpenClaw runtime
 .openclaw/
+
+# OpenClaw source (cloned during setup)
 .openclaw-src/
 
 # Generated docker-compose (contains gateway token)
 docker-compose.yml
 
-# Shared folders (apps + logs)
+# Shared folders (runtime)
 apps/
 shared/
 

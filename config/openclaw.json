@@ -18,10 +18,5 @@
   },
   "gateway": {
     "mode": "local"
-  },
-  "channels": {
-    "whatsapp": {
-      "allowFrom": ["+YOUR_NUMBER_HERE"]
-    }
   }
 }
