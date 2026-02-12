@@ -15,18 +15,36 @@ fi
 
 cp "$SCRIPT_DIR/deployer-workspace/config/openclaw.json" "$OPENCLAW_CONFIG_FILE"
 
-# Update workspace path to container path
+# Enable WhatsApp plugin and set gateway mode
 python3 -c "
+import json
 with open('$OPENCLAW_CONFIG_FILE', 'r') as f:
-    content = f.read()
-content = content.replace('~/clawbot', '/home/node/.openclaw/workspace')
+    config = json.load(f)
+
+# Enable WhatsApp plugin
+if 'plugins' not in config:
+    config['plugins'] = {}
+if 'entries' not in config['plugins']:
+    config['plugins']['entries'] = {}
+if 'whatsapp' not in config['plugins']['entries']:
+    config['plugins']['entries']['whatsapp'] = {}
+config['plugins']['entries']['whatsapp']['enabled'] = True
+
+# Ensure gateway mode is set
+if 'gateway' not in config:
+    config['gateway'] = {}
+config['gateway']['mode'] = 'local'
+
 with open('$OPENCLAW_CONFIG_FILE', 'w') as f:
-    f.write(content)
-print('Updated workspace path for container')
+    json.dump(config, f, indent=2)
+
+print('Updated config: enabled WhatsApp and set gateway mode')
 "
 
 echo "Copied Opus+Haiku config to $OPENCLAW_CONFIG_FILE"
 echo ""
-echo "IMPORTANT: Edit $OPENCLAW_CONFIG_FILE and replace '+YOUR_NUMBER_HERE'"
-echo "  with your WhatsApp phone number (e.g., +919876543210)"
+echo "IMPORTANT: After onboarding completes, approve WhatsApp pairing with:"
+echo "  docker-compose run --rm openclaw-cli pairing approve whatsapp <CODE>"
 echo ""
+echo "Or manually add your phone number to $OPENCLAW_CONFIG_FILE"
+echo "

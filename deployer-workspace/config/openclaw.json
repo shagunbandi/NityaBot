@@ -1,37 +1,27 @@
 {
-  // OpenClaw configuration for Opus (architect) + Haiku (developers)
-  // Docs: https://docs.openclaw.ai/gateway/configuration
-
-  agents: {
-    defaults: {
-      // Opus handles all direct conversation: planning, decisions, user communication
-      model: {
-        primary: "anthropic/claude-opus-4-6",
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-opus-4-6"
       },
-
-      // Haiku sub-agents do the actual work: writing code, deploying, testing
-      // Spawned by Opus via sessions_spawn, each gets one focused task
-      subagents: {
-        model: "anthropic/claude-haiku-3-5",
-        maxConcurrent: 4,
-        archiveAfterMinutes: 120,
+      "workspace": "/home/node/.openclaw/workspace",
+      "heartbeat": {
+        "every": "4h",
+        "target": "last"
       },
-
-      // Workspace points to the clawbot directory (this repo)
-      workspace: "~/clawbot",
-
-      // Heartbeat: periodic check-in (Opus checks on you)
-      heartbeat: {
-        every: "4h",
-        target: "last",
-      },
-    },
+      "subagents": {
+        "model": "anthropic/claude-haiku-3-5",
+        "maxConcurrent": 4,
+        "archiveAfterMinutes": 120
+      }
+    }
   },
-
-  // WhatsApp channel - replace with your phone number after setup
-  channels: {
-    whatsapp: {
-      allowFrom: ["+YOUR_NUMBER_HERE"],
-    },
+  "gateway": {
+    "mode": "local"
   },
+  "channels": {
+    "whatsapp": {
+      "allowFrom": ["+YOUR_NUMBER_HERE"]
+    }
+  }
 }

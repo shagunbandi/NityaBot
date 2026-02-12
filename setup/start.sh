@@ -4,8 +4,18 @@
 echo "--- Starting OpenClaw gateway + deployer ---"
 echo ""
 
+# Detect docker-compose
+if docker compose version &>/dev/null; then
+    DC="docker compose"
+elif command -v docker-compose &>/dev/null; then
+    DC="docker-compose"
+else
+    echo "ERROR: Neither 'docker compose' (v2) nor 'docker-compose' (v1) found"
+    exit 1
+fi
+
 cd "$SCRIPT_DIR"
-docker compose up -d openclaw-gateway deployer 2>&1
+$DC up -d openclaw-gateway deployer 2>&1
 
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/deployer-workspace/config/.env"
@@ -31,25 +41,26 @@ echo "    - Haiku (claude-haiku-3-5) for sub-agents"
 echo "    - Workspace mounted from: $SCRIPT_DIR"
 echo "    - Docker network: $DOCKER_NETWORK"
 echo ""
-echo "  Remaining manual step:"
+echo "  Next steps:"
 echo ""
-echo "  1. Edit WhatsApp number in config:"
-echo "     nano $OPENCLAW_CONFIG_FILE"
-echo "     Replace '+YOUR_NUMBER_HERE' with your number"
+echo "  1. Send a WhatsApp message to your number to get a pairing code"
 echo ""
-echo "  2. Add the Docker network to Traefik:"
+echo "  2. Approve the pairing with:"
+echo "     $DC run --rm openclaw-cli pairing approve whatsapp <CODE>"
+echo ""
+echo "  3. Add the Docker network to Traefik (if not already done):"
 echo "     Edit your Traefik docker-compose.yml"
 echo "     Add '$DOCKER_NETWORK' as an external network"
 echo "     Restart Traefik"
 echo ""
-echo "  3. Test it! Send a WhatsApp message:"
+echo "  4. Test it! Send a WhatsApp message:"
 echo "     'Hello! What can you help me build?'"
 echo ""
 echo "  Commands:"
-echo "    docker compose logs -f openclaw-gateway   # View OpenClaw logs"
-echo "    docker compose logs -f deployer           # View deployer logs"
-echo "    docker compose restart openclaw-gateway    # Restart OpenClaw"
-echo "    docker compose down                        # Stop everything"
-echo "    docker compose run --rm openclaw-cli channels login  # Re-scan QR"
+echo "    $DC logs -f openclaw-gateway   # View OpenClaw logs"
+echo "    $DC logs -f deployer           # View deployer logs"
+echo "    $DC restart openclaw-gateway    # Restart OpenClaw"
+echo "    $DC down                        # Stop everything"
+echo "    $DC run --rm openclaw-cli pairing list  # List pairings"
 echo ""
 echo "============================================"

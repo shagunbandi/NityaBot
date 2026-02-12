@@ -1,6 +1,16 @@
 #!/bin/bash
 # onboard.sh - Display onboarding instructions and wait for user
 
+# Detect docker-compose
+if docker compose version &>/dev/null; then
+    DC="docker compose"
+elif command -v docker-compose &>/dev/null; then
+    DC="docker-compose"
+else
+    echo "ERROR: Neither 'docker compose' (v2) nor 'docker-compose' (v1) found"
+    exit 1
+fi
+
 echo "--- OpenClaw Onboarding ---"
 echo ""
 echo "============================================"
@@ -10,7 +20,7 @@ echo ""
 echo "  Run the following command in a NEW terminal:"
 echo ""
 echo "    cd $SCRIPT_DIR"
-echo "    docker compose run --rm openclaw-cli onboard --no-install-daemon"
+echo "    $DC run --rm openclaw-cli onboard --no-install-daemon"
 echo ""
 echo "  The wizard will guide you through:"
 echo ""
