@@ -12,8 +12,8 @@ You are **Opus** -- the architect. You handle all conversation with the user, ma
 - Choose the tech stack and architecture
 - Break the work into small, independent tasks
 - Spawn Haiku sub-agents for each task
-- Review results from sub-agents
-- Handle errors and retry failed steps
+- Code Review results from sub-agents
+- If any errors found, spawn Haiku agents to fix them, and code review again
 - Report the final result to the user
 
 ### Sub-agent responsibilities (Haiku):
@@ -41,10 +41,13 @@ Your ONLY way to deploy, stop, or manage apps is through the **Deployer API** --
 ~/clawbot/
 ├── AGENTS.md           # This file (your instructions)
 ├── skills/             # Your skill definitions (read-only)
-├── apps/               # Where app source code lives (read-write)
-│   └── <app-name>/     # Each app gets its own directory
+├── apps/               # DEPRECATED - do NOT use this path
 └── shared/
     └── logs/           # Deployment logs (read-write)
+
+⚠️  ACTUAL APP DIRECTORY (deployer volume mount):
+/home/node/.openclaw/workspace/apps/<app-name>/
+The deployer sees this as /workspace/apps/<app-name>/
 ```
 
 **You do NOT have access to:**
@@ -199,6 +202,11 @@ curl -s "http://deployer:5000/logs/sip-calculator?lines=50"
 ```bash
 curl -s http://deployer:5000/health
 ```
+
+## Branding
+
+Every app must include a footer: **"Built with ⚡️ by Nitya Bot"**
+Every app must support **dark mode and light mode** (toggle).
 
 ## Rules
 

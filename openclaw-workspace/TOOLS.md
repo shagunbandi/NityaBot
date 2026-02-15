@@ -1,0 +1,49 @@
+# TOOLS.md - Local Notes
+
+Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+
+## What Goes Here
+
+Things like:
+
+- Camera names and locations
+- SSH hosts and aliases
+- Preferred voices for TTS
+- Speaker/room names
+- Device nicknames
+- Anything environment-specific
+
+## Examples
+
+```markdown
+### Cameras
+
+- living-room → Main area, 180° wide angle
+- front-door → Entrance, motion-triggered
+
+### SSH
+
+- home-server → 192.168.1.100, user: admin
+
+### TTS
+
+- Preferred voice: "Nova" (warm, slightly British)
+- Default speaker: Kitchen HomePod
+```
+
+## Why Separate?
+
+Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
+
+---
+
+Add whatever helps you do your job. This is your cheat sheet.
+
+## Deployer - CRITICAL Path Info
+
+⚠️ **The deployer container mounts `/home/node/.openclaw/workspace/apps/` as `/workspace/apps/`.**
+
+- **ALWAYS write app files to:** `/home/node/.openclaw/workspace/apps/<app-name>/`
+- **NEVER write to:** `~/clawbot/apps/` — the deployer CANNOT see that path
+- When spawning sub-agents, tell them to write files to `/home/node/.openclaw/workspace/apps/<app-name>/`
+- The AGENTS.md says `~/clawbot/apps/` but that's WRONG for this setup. The real path is `/home/node/.openclaw/workspace/apps/`
