@@ -150,6 +150,17 @@ OpenClaw runs in complete isolation. It has no Docker socket, no Docker CLI, and
 | Host filesystem | NONE | NONE |
 | Network | internal Docker network | internal Docker network |
 
+### Shared databases
+
+When you run `docker compose up` at the repo root, **PostgreSQL** and **MongoDB** start alongside the gateway, deployer, and CLI. Data is stored in Docker named volumes (`openclaw_pgdata`, `openclaw_mongodata`) so it persists across container restarts.
+
+Every deployed app receives connection environment variables (`POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `MONGODB_URI`) so it can connect to these databases over `openclaw_network`. Apps can create tables or collections as needed.
+
+- **PostgreSQL:** One instance, one database (e.g. `openclaw`). Prefer a **schema per app** (e.g. `flashcard_app`, `grocery_list`) for isolation, or use the `public` schema with table prefixes.
+- **MongoDB:** One instance. Use **one database per app** (e.g. `flashcard_app`, `grocery_list`) and create collections as needed.
+
+Configure credentials in `deployer-workspace/config/.env` (see `.env.example` for `POSTGRES_*` and `MONGODB_URI`). OpenClaw is instructed (in `AGENTS.md` and the app-builder skill) to use these shared databases for any app that needs persistent data — not SQLite or in-container DBs — so data persists across redeploys.
+
 ## Directory Structure
 
 ```
@@ -223,6 +234,7 @@ Fill in:
 - `CF_API_TOKEN` - Your Cloudflare API token (needs Zone.Zone Read + Zone.DNS Edit permissions)
 - `CF_BASE_DOMAIN` - Your domain (e.g., `yourdomain.com`). Zone ID is looked up automatically.
 - `ALLOWED_ZONE_SUFFIX` - Usually same as `CF_BASE_DOMAIN`. Prevents deploying to arbitrary domains.
+- Optional: `POSTGRES_*` and `MONGODB_URI` for the shared databases (defaults work for local use; see `.env.example`).
 
 ### 3. Run setup
 
@@ -254,6 +266,19 @@ Send a WhatsApp message:
 ```
 Hello! What can you help me build?
 ```
+
+### 5. Add Another Channel (Optional)
+
+To onboard an additional messaging channel after initial setup:
+
+```bash
+docker compose run --rm openclaw-cli configure
+```
+
+This will let you:
+- Add a new WhatsApp account
+- Add Telegram, Discord, Slack, or other channels
+- Configure multiple channels for the same gateway
 
 ## Usage Examples
 

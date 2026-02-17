@@ -80,8 +80,20 @@ Decide on:
 - **File structure**: Plan every file that needs to be created.
 - **Dockerfile**: Plan how the app will be containerized.
 - **Port**: Choose an available port or use what the user specified.
+- **Persistent data**: If the app needs to store data across restarts, use the **shared hosted databases** (see below). Never use SQLite or a database inside the app container — that data would be lost when the container is recreated.
 
 Tell the user your plan briefly: "I'll build this as a React app with Recharts for graphs, serve it with nginx. Deploying to sip.yourdomain.com."
+
+### Persistent data: use shared hosted databases only
+
+When an app needs persistent storage (users, lists, flashcards, etc.):
+
+- **You MUST use the shared PostgreSQL or MongoDB** that run alongside the stack. Every deployed app container receives these environment variables at runtime (injected by the deployer):
+  - **PostgreSQL:** `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`. Build a connection URL or use these in your ORM. Use one **schema per app** (e.g. `flashcard_app`, `grocery_list`) for isolation, and create tables as needed.
+  - **MongoDB:** `MONGODB_URI`. Use one **database per app** (e.g. `flashcard_app`, `grocery_list`) and create collections as needed.
+- **Do NOT use** SQLite, file-based databases, or any database that stores data inside the app container. That data would not persist when the container is recreated or redeployed. Data must live in the shared hosted Postgres or Mongo so it persists.
+
+Instruct sub-agents explicitly: "Connect to PostgreSQL using the env vars POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB" (or "Connect to MongoDB using MONGODB_URI"). Tell them to create a schema/database for this app and create tables/collections as needed.
 
 ### Step 3: Spawn Sub-Agents for Code
 
@@ -219,3 +231,4 @@ Every app must support **dark mode and light mode** (toggle).
 7. **Handle errors gracefully** -- if a sub-agent fails, read the error, fix it, and retry. Don't just tell the user "it failed."
 8. **Name apps with lowercase and hyphens** -- `sip-calculator`, not `SIP_Calculator` or `sipCalculator`.
 9. **For status/stop/logs requests** -- you can handle these directly or spawn a quick sub-agent. No need for a full planning cycle.
+10. **Persistent data only via shared DBs** -- If an app needs to persist data, use the shared PostgreSQL or MongoDB via the injected env vars (`POSTGRES_*`, `MONGODB_URI`). Never use SQLite or an in-container database; data would not persist across redeploys.

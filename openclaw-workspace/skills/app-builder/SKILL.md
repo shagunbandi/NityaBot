@@ -49,8 +49,12 @@ Keep tasks small. A sub-agent writing 500 lines is too much. Split into multiple
 - **Simple web apps**: Static HTML/CSS/JS or React + Vite, served via nginx
 - **Apps with charts**: React + Recharts or Chart.js
 - **APIs/backends**: Node.js (Express/Fastify) or Go
-- **Databases**: SQLite for simple apps, PostgreSQL for complex ones
+- **Databases**: Use the **shared hosted databases only** — PostgreSQL or MongoDB. Connection details are injected at deploy time via env vars: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` for SQL; `MONGODB_URI` for NoSQL. Use one schema per app (Postgres) or one database per app (MongoDB). **Do not use SQLite or any database inside the app container** — data would not persist across redeploys.
 - **Styling**: Tailwind CSS preferred, or simple CSS
+
+## Persistent data
+
+When the app needs to store data (users, lists, items, etc.), always use the shared PostgreSQL or MongoDB. In sub-agent tasks, specify: "Connect to PostgreSQL using environment variables POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB" or "Connect to MongoDB using MONGODB_URI". Have the app create its own schema/database and tables/collections as needed. Never use SQLite or file-based or in-container databases.
 
 ## Example sub-agent task
 

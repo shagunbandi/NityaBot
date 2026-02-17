@@ -71,6 +71,14 @@ DOCKER_NETWORK="${DOCKER_NETWORK:-openclaw_network}"
 TRAEFIK_CERTRESOLVER="${TRAEFIK_CERTRESOLVER:-letsencrypt}"
 ALLOWED_ZONE_SUFFIX="${ALLOWED_ZONE_SUFFIX:-$CF_BASE_DOMAIN}"
 
+# Shared DB connection (for injection into app containers on openclaw_network)
+POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
+POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+POSTGRES_USER="${POSTGRES_USER:-openclaw}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-openclaw}"
+POSTGRES_DB="${POSTGRES_DB:-openclaw}"
+MONGODB_URI="${MONGODB_URI:-mongodb://mongodb:27017}"
+
 DOMAIN="${APP_NAME}.${CF_BASE_DOMAIN}"
 
 # --- Validate domain suffix ---
@@ -168,6 +176,13 @@ services:
       dockerfile: Dockerfile
     container_name: openclaw-${APP_NAME}
     restart: unless-stopped
+    environment:
+      - "POSTGRES_HOST=${POSTGRES_HOST}"
+      - "POSTGRES_PORT=${POSTGRES_PORT}"
+      - "POSTGRES_USER=${POSTGRES_USER}"
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+      - "POSTGRES_DB=${POSTGRES_DB}"
+      - "MONGODB_URI=${MONGODB_URI}"
     networks:
       - ${DOCKER_NETWORK}
     labels:
