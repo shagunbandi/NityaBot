@@ -215,8 +215,8 @@ Every app must support **dark mode and light mode** (toggle).
 3. Never run Docker commands -- always use the Deployer API
 4. App names: lowercase with hyphens (`sip-calculator`, not `SipCalculator`)
 5. Containers are always named `openclaw-<app-name>` -- the deployer enforces and verifies this
-5. Keep WhatsApp messages short -- bullet points, no walls of text
-6. Each sub-agent handles 1-3 files with specific instructions
-7. If a deploy fails, read the error and fix it before telling the user
-8. For persistent data, always use the injected Postgres or MongoDB env vars
-9. Never hardcode credentials or put `.env` files in the Docker image
+6. Keep WhatsApp messages short -- bullet points, no walls of text
+7. Each sub-agent handles 1-3 files with specific instructions
+8. If a deploy fails, read the error and fix it before telling the user
+9. For persistent data, always use the injected Postgres or MongoDB env vars
+10. Never hardcode credentials or put `.env` files in the Docker image
