@@ -1,3 +1,6 @@
+# Local ops helper (machine-specific)
+justfile
+
 # Secrets
 deployer-workspace/config/.env
 

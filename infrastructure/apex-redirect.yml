@@ -1,0 +1,22 @@
+services:
+  apex-redirect:
+    image: nginx:alpine
+    container_name: openclaw-apex-redirect
+    restart: unless-stopped
+    networks:
+      - openclaw_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.apex-redirect.rule=Host(`pocketfusion.in`)"
+      - "traefik.http.routers.apex-redirect.entrypoints=websecure"
+      - "traefik.http.routers.apex-redirect.tls=true"
+      - "traefik.http.routers.apex-redirect.tls.certresolver=cloudflare"
+      - "traefik.http.middlewares.apex-to-www.redirectregex.regex=^https://pocketfusion\\.in(.*)"
+      - "traefik.http.middlewares.apex-to-www.redirectregex.replacement=https://www.pocketfusion.in$$1"
+      - "traefik.http.middlewares.apex-to-www.redirectregex.permanent=true"
+      - "traefik.http.routers.apex-redirect.middlewares=apex-to-www@docker"
+      - "traefik.http.services.apex-redirect.loadbalancer.server.port=80"
+
+networks:
+  openclaw_network:
+    external: true
