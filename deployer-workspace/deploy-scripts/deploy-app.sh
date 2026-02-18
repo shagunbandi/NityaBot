@@ -91,7 +91,7 @@ if [ "$USE_BASIC_AUTH" = true ]; then
     if command -v htpasswd &>/dev/null; then
       BASIC_AUTH_HASH=$(htpasswd -nbB "$BASIC_AUTH_USER" "$BASIC_AUTH_PASS" | sed 's/\$/\$\$/g')
     else
-      die "htpasswd not found and BASIC_AUTH_HASH not provided. Set BASIC_AUTH_USER and BASIC_AUTH_PASS in config/.env and use POST /deploy-secure (generates hash in deployer), or install apache2-utils in deployer image."
+      die "htpasswd not found and BASIC_AUTH_HASH not provided. Set BASIC_AUTH_USER and BASIC_AUTH_PASS in config/.env and use POST /deploy with basic_auth:true (generates hash in deployer), or install apache2-utils in deployer image."
     fi
     echo "Basic auth enabled for $APP_NAME (user: $BASIC_AUTH_USER)"
   fi

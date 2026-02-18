@@ -44,6 +44,4 @@ Add whatever helps you do your job. This is your cheat sheet.
 ⚠️ **The deployer container mounts `/home/node/.openclaw/workspace/apps/` as `/workspace/apps/`.**
 
 - **ALWAYS write app files to:** `/home/node/.openclaw/workspace/apps/<app-name>/`
-- **NEVER write to:** `~/clawbot/apps/` — the deployer CANNOT see that path
 - When spawning sub-agents, tell them to write files to `/home/node/.openclaw/workspace/apps/<app-name>/`
-- The AGENTS.md says `~/clawbot/apps/` but that's WRONG for this setup. The real path is `/home/node/.openclaw/workspace/apps/`

@@ -110,7 +110,7 @@ def _generate_basic_auth_hash(username, password):
 
 
 def _deploy(app_name, port, basic_auth=False):
-    """Shared deploy logic used by /deploy and /deploy-secure."""
+    """Shared deploy logic. basic_auth=True enables Traefik HTTP Basic Auth."""
     if not validate_app_name(app_name):
         return jsonify({
             "success": False,

@@ -128,6 +128,42 @@ services:
       - ${DOCKER_NETWORK}
     entrypoint: ["node", "dist/index.js"]
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: openclaw-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-openclaw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openclaw}
+      POSTGRES_DB: ${POSTGRES_DB:-openclaw}
+    volumes:
+      - openclaw_pgdata:/var/lib/postgresql/data
+    networks:
+      - ${DOCKER_NETWORK}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openclaw}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    container_name: openclaw-mongodb
+    volumes:
+      - openclaw_mongodata:/data/db
+    networks:
+      - ${DOCKER_NETWORK}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  openclaw_pgdata:
+  openclaw_mongodata:
+
 networks:
   ${DOCKER_NETWORK}:
     external: true

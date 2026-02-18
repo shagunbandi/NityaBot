@@ -64,7 +64,7 @@ Summarize the logs for the user -- don't dump raw log output on WhatsApp. Highli
 ### Redeploy / Update
 
 If the user wants to update an existing app:
-1. The source code already exists in `~/clawbot/apps/<app-name>/`
+1. The source code already exists in `/home/node/.openclaw/workspace/apps/<app-name>/`
 2. Spawn sub-agents to make the requested changes to the code
 3. Call the deploy API again -- it will rebuild the Docker image and restart the container
 4. The DNS record already exists, so it just updates the container
@@ -79,7 +79,7 @@ curl -s -X POST http://deployer:5000/deploy \
 
 To see what an existing app contains:
 ```bash
-ls -la ~/clawbot/apps/<app-name>/
+ls -la /home/node/.openclaw/workspace/apps/<app-name>/
 ```
 
 This is useful when the user wants to modify an existing app -- you can read the current code before planning changes.

@@ -21,7 +21,7 @@ When the user asks you to:
 
 2. **Plan**: Choose the tech stack and plan the file structure. Tell the user your plan in one short message.
 
-3. **Build**: Spawn Haiku sub-agents via `sessions_spawn` with atomic tasks. Each sub-agent writes 1-3 specific files to `~/clawbot/apps/<app-name>/`. Spawn independent tasks in parallel.
+3. **Build**: Spawn Haiku sub-agents via `sessions_spawn` with atomic tasks. Each sub-agent writes 1-3 specific files to `/home/node/.openclaw/workspace/apps/<app-name>/`. Spawn independent tasks in parallel.
 
 4. **Dockerize**: Spawn a sub-agent to create a `Dockerfile` in the app directory. Use multi-stage builds for compiled apps. Serve web apps via nginx.
 
@@ -38,7 +38,7 @@ When the user asks you to:
 ## Task breakdown guidelines
 
 Each sub-agent task must include:
-- **Exact file path(s)** to create (e.g., `~/clawbot/apps/my-app/src/utils/calc.ts`)
+- **Exact file path(s)** to create (e.g., `/home/node/.openclaw/workspace/apps/my-app/src/utils/calc.ts`)
 - **What the code should do** (function names, inputs, outputs)
 - **Dependencies** on other files (import paths, interfaces)
 
@@ -59,7 +59,7 @@ When the app needs to store data (users, lists, items, etc.), always use the sha
 ## Example sub-agent task
 
 ```
-Create the file ~/clawbot/apps/sip-calc/src/utils/sip.ts
+Create the file /home/node/.openclaw/workspace/apps/sip-calc/src/utils/sip.ts
 
 This file should export two functions:
 
@@ -80,7 +80,7 @@ Use TypeScript. No external dependencies.
 ## Example deploy sub-agent task
 
 ```
-The app code is ready in ~/clawbot/apps/sip-calc/ with a Dockerfile.
+The app code is ready in /home/node/.openclaw/workspace/apps/sip-calc/ with a Dockerfile.
 
 Deploy it by running:
   curl -s -X POST http://deployer:5000/deploy \

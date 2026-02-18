@@ -132,7 +132,7 @@ OpenClaw runs in complete isolation. It has no Docker socket, no Docker CLI, and
 
 | What | How |
 |------|-----|
-| Writing app code | Haiku writes files into `~/clawbot/apps/<app-name>/` |
+| Writing app code | Haiku writes files into `/home/node/.openclaw/workspace/apps/<app-name>/` |
 | Creating Dockerfiles | Haiku writes the Dockerfile as part of the app |
 | Building & deploying | Haiku calls `POST http://deployer:5000/deploy` |
 | Creating DNS records | The deployer's script calls Cloudflare API |
@@ -373,12 +373,12 @@ After your reply, Opus creates a build plan and spawns sub-agents:
 
 ```
 sessions_spawn: {
-  task: "Create file ~/clawbot/apps/sip-calculator/src/utils/sip.ts with SIP and lumpsum calculation functions...",
+  task: "Create file /home/node/.openclaw/workspace/apps/sip-calculator/src/utils/sip.ts with SIP and lumpsum calculation functions...",
   model: "anthropic/claude-haiku-3-5"
 }
 
 sessions_spawn: {
-  task: "Create file ~/clawbot/apps/sip-calculator/src/components/SIPForm.tsx...",
+  task: "Create file /home/node/.openclaw/workspace/apps/sip-calculator/src/components/SIPForm.tsx...",
   model: "anthropic/claude-haiku-3-5"
 }
 ```

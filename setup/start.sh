@@ -18,7 +18,7 @@ fi
 OPENCLAW_CONFIG_DIR="${OPENCLAW_CONFIG_DIR:-$SCRIPT_DIR/.openclaw}"
 
 cd "$SCRIPT_DIR"
-$DC up -d openclaw-gateway deployer 2>&1
+$DC up -d openclaw-gateway deployer postgres mongodb 2>&1
 
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/deployer-workspace/config/.env"
@@ -33,6 +33,8 @@ echo ""
 echo "  Containers are running:"
 echo "    - openclaw-gateway (Opus + Haiku models)"
 echo "    - openclaw-deployer (Flask API with Docker access)"
+echo "    - openclaw-postgres (shared PostgreSQL database)"
+echo "    - openclaw-mongodb (shared MongoDB database)"
 echo ""
 echo "  Architecture:"
 echo "    - OpenClaw writes code to apps/"
