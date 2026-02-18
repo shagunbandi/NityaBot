@@ -5,9 +5,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     docker-compose \
     jq \
     curl \
+    apache2-utils \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir flask
+RUN pip install --no-cache-dir flask bcrypt
 
 COPY app.py /app/app.py
 

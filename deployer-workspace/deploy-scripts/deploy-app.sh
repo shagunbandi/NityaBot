@@ -3,7 +3,11 @@ set -euo pipefail
 
 # deploy-app.sh - Build and deploy an app with Cloudflare DNS + Docker + Traefik
 #
-# Usage: bash deploy-app.sh <app-name> <internal-port>
+# Usage: bash deploy-app.sh <app-name> <internal-port> [basic_auth]
+#
+# Optional: 3rd argument "basic_auth" (or "secure") enables Traefik HTTP Basic Auth.
+# Alternatively, if the app directory contains a file named .secure-deploy, basic auth
+# is enabled automatically. Requires BASIC_AUTH_USER and BASIC_AUTH_PASS in config/.env.
 #
 # Requirements:
 #   - Dockerfile must exist in $WORKSPACE_DIR/apps/<app-name>/
@@ -40,12 +44,21 @@ fi
 
 # --- Validation ---
 
-[ $# -ge 2 ] || die "Usage: deploy-app.sh <app-name> <port>
+[ $# -ge 2 ] || die "Usage: deploy-app.sh <app-name> <port> [basic_auth]
   app-name: lowercase with hyphens (e.g., sip-calculator)
-  port: internal port the app listens on (e.g., 80, 3000, 8080)"
+  port: internal port the app listens on (e.g., 80, 3000, 8080)
+  basic_auth: optional, use 'basic_auth' or 'secure' to enable Traefik Basic Auth"
 
 APP_NAME="$1"
 APP_PORT="$2"
+USE_BASIC_AUTH=false
+if [ -n "${3:-}" ]; then
+  case "$3" in
+    basic_auth|secure) USE_BASIC_AUTH=true ;;
+  esac
+fi
+# Also enable basic auth if app has .secure-deploy marker
+[ -f "$APPS_DIR/$APP_NAME/.secure-deploy" ] && USE_BASIC_AUTH=true
 
 echo "$APP_NAME" | grep -qE '^[a-z][a-z0-9-]*$' \
     || die "App name must be lowercase, start with a letter, use only letters/numbers/hyphens. Got: $APP_NAME"
@@ -67,6 +80,23 @@ source "$ENV_FILE"
 [ -n "${CF_API_TOKEN:-}" ]    || die "CF_API_TOKEN is not set in $ENV_FILE"
 [ -n "${CF_BASE_DOMAIN:-}" ]  || die "CF_BASE_DOMAIN is not set in $ENV_FILE"
 
+if [ "$USE_BASIC_AUTH" = true ]; then
+  if [ -n "${BASIC_AUTH_HASH:-}" ]; then
+    # Pre-computed hash from deployer (Python bcrypt) — escape $ for docker-compose
+    BASIC_AUTH_HASH=$(echo "$BASIC_AUTH_HASH" | sed 's/\$/\$\$/g')
+    echo "Basic auth enabled for $APP_NAME (hash from deployer)"
+  else
+    [ -n "${BASIC_AUTH_USER:-}" ] || die "BASIC_AUTH_USER is not set in $ENV_FILE (required for basic_auth deploy)"
+    [ -n "${BASIC_AUTH_PASS:-}" ] || die "BASIC_AUTH_PASS is not set in $ENV_FILE (required for basic_auth deploy)"
+    if command -v htpasswd &>/dev/null; then
+      BASIC_AUTH_HASH=$(htpasswd -nbB "$BASIC_AUTH_USER" "$BASIC_AUTH_PASS" | sed 's/\$/\$\$/g')
+    else
+      die "htpasswd not found and BASIC_AUTH_HASH not provided. Set BASIC_AUTH_USER and BASIC_AUTH_PASS in config/.env and use POST /deploy-secure (generates hash in deployer), or install apache2-utils in deployer image."
+    fi
+    echo "Basic auth enabled for $APP_NAME (user: $BASIC_AUTH_USER)"
+  fi
+fi
+
 DOCKER_NETWORK="${DOCKER_NETWORK:-openclaw_network}"
 TRAEFIK_CERTRESOLVER="${TRAEFIK_CERTRESOLVER:-letsencrypt}"
 ALLOWED_ZONE_SUFFIX="${ALLOWED_ZONE_SUFFIX:-$CF_BASE_DOMAIN}"
@@ -78,6 +108,7 @@ POSTGRES_USER="${POSTGRES_USER:-openclaw}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-openclaw}"
 POSTGRES_DB="${POSTGRES_DB:-openclaw}"
 MONGODB_URI="${MONGODB_URI:-mongodb://mongodb:27017}"
+GOOGLE_PLACES_API_KEY="${GOOGLE_PLACES_API_KEY:-}"
 
 DOMAIN="${APP_NAME}.${CF_BASE_DOMAIN}"
 
@@ -168,6 +199,24 @@ echo ""
 
 echo "--- Step 2: Generating docker-compose.yml ---"
 
+# Build Traefik labels (optional basic auth middleware)
+ROUTER_LABELS="
+      - \"traefik.enable=true\"
+      - \"traefik.http.routers.${APP_NAME}.rule=Host(\`${DOMAIN}\`)\"
+      - \"traefik.http.routers.${APP_NAME}.entrypoints=websecure\"
+      - \"traefik.http.routers.${APP_NAME}.tls=true\"
+      - \"traefik.http.routers.${APP_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER}\"
+      - \"traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}\"
+      - \"openclaw.managed=true\"
+      - \"openclaw.app=${APP_NAME}\"
+      - \"openclaw.domain=${DOMAIN}\""
+if [ "$USE_BASIC_AUTH" = true ]; then
+  MIDDLEWARE_NAME="${APP_NAME}-basicauth"
+  ROUTER_LABELS="$ROUTER_LABELS
+      - \"traefik.http.middlewares.${MIDDLEWARE_NAME}.basicauth.users=${BASIC_AUTH_HASH}\"
+      - \"traefik.http.routers.${APP_NAME}.middlewares=${MIDDLEWARE_NAME}@docker\""
+fi
+
 cat > "$APP_DIR/docker-compose.yml" << COMPOSE_EOF
 services:
   ${APP_NAME}:
@@ -183,18 +232,10 @@ services:
       - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
       - "POSTGRES_DB=${POSTGRES_DB}"
       - "MONGODB_URI=${MONGODB_URI}"
+      - "GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}"
     networks:
       - ${DOCKER_NETWORK}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${APP_NAME}.rule=Host(\`${DOMAIN}\`)"
-      - "traefik.http.routers.${APP_NAME}.entrypoints=websecure"
-      - "traefik.http.routers.${APP_NAME}.tls=true"
-      - "traefik.http.routers.${APP_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
-      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}"
-      - "openclaw.managed=true"
-      - "openclaw.app=${APP_NAME}"
-      - "openclaw.domain=${DOMAIN}"
+    labels:${ROUTER_LABELS}
 
 networks:
   ${DOCKER_NETWORK}:
@@ -242,6 +283,7 @@ if $DC ps 2>/dev/null | grep "openclaw-${APP_NAME}" | grep -q "Up"; then
     echo "  URL: https://$DOMAIN"
     echo "  Container: openclaw-$APP_NAME"
     echo "  Port: $APP_PORT"
+    [ "$USE_BASIC_AUTH" = true ] && echo "  Basic auth: enabled (Traefik)"
     echo "  Status: running"
     echo "========================================="
 else

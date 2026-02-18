@@ -6,76 +6,134 @@ metadata: {"openclaw":{"always":true}}
 
 # App Deployer Skill
 
-Deploy applications that have been built in `~/clawbot/apps/<app-name>/`.
+Deploy applications via the **Deployer API** at `http://deployer:5000`.
 
-## How deployment works
+**NEVER run `docker`, `docker-compose`, or any Docker commands. You have no Docker access.**
 
-You are running inside a Docker container with **NO Docker access**. All deployment operations go through the **Deployer API** -- a separate container that handles Docker on your behalf.
+---
 
-**NEVER run `docker`, `docker-compose`, `docker build`, or `docker run` directly. You do not have access.**
+## Dockerfile Requirements
 
-The deployer runs at `http://deployer:5000` on the internal Docker network.
+Every app directory must have a `Dockerfile` before calling the deploy API.
 
-## Deploy an app
+Rules:
+- **EXPOSE the port** you pass to the deploy API
+- Use multi-stage builds when building frontend/compiled code
+- Use lightweight base images (alpine)
+- Do NOT put secrets or `.env` files in the image -- credentials are injected at runtime
+
+**React/static app (port 80):**
+```dockerfile
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+HEALTHCHECK CMD wget -q --spider http://localhost/ || exit 1
+```
+
+**Node.js backend (port 3000):**
+```dockerfile
+FROM node:22-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+---
+
+## Deploy an App
 
 ```bash
 curl -s -X POST http://deployer:5000/deploy \
   -H "Content-Type: application/json" \
-  -d '{"app_name": "<app-name>", "port": <port>}'
+  -d '{"app_name": "my-app", "port": 80}'
 ```
 
-Requirements:
-- A `Dockerfile` must exist in `~/clawbot/apps/<app-name>/`
-- `port` is the internal port the app listens on inside the container (commonly 80 for nginx-served apps, 3000 for Node, 8080 for Go)
+**What this does, step by step:**
+1. Reads credentials from `config/.env` (mounted from the host)
+2. Creates a Cloudflare DNS CNAME: `my-app.pocketfusion.in`
+3. Generates `docker-compose.yml` with Traefik labels (HTTPS, TLS cert, routing rule)
+4. Builds the Docker image from the `Dockerfile` in the app directory
+5. Starts the container on the `openclaw_network` — named **`openclaw-<app-name>`** (e.g. `openclaw-my-app`)
+6. Verifies a container named `openclaw-<app-name>` is in `Up` state — fails if not
+7. Returns `{"success": true/false, "output": "...", "exit_code": N}`
 
-What the deployer does:
-1. Creates a Cloudflare DNS CNAME record: `<app-name>.<CF_BASE_DOMAIN>`
-2. Generates `docker-compose.yml` with Traefik labels in the app directory
-3. Builds the Docker image from the Dockerfile
-4. Starts the container on the Docker network
-5. Returns JSON with `success`, `output`, and `exit_code`
+On success, the app is live at `https://my-app.pocketfusion.in` with a valid TLS cert.
 
-Response on success:
-```json
-{"success": true, "output": "SUCCESS: sip-calculator deployed\n  URL: https://sip-calculator.yourdomain.com\n  ...", "exit_code": 0}
+---
+
+## Deploy with Basic Auth (password-protected)
+
+For apps that need HTTP Basic Auth. Traefik prompts for credentials before serving the app. Requires `BASIC_AUTH_USER` and `BASIC_AUTH_PASS` in `config/.env`.
+
+```bash
+curl -s -X POST http://deployer:5000/deploy \
+  -H "Content-Type: application/json" \
+  -d '{"app_name": "my-app", "port": 3000, "basic_auth": true}'
 ```
 
-Response on failure:
-```json
-{"success": false, "output": "FAILURE: Docker build failed...", "exit_code": 1}
-```
+Use this when the user asks for a secure/password-protected app, or when the app directory has a `.secure-deploy` file.
 
-## Stop an app
+---
+
+## Environment Variables Injected into Your App
+
+The deployer injects these into every app container at runtime from `config/.env`. Your code reads them as normal environment variables -- no `.env` file needed inside the image.
+
+| Variable | Value |
+|---|---|
+| `POSTGRES_HOST` | `postgres` |
+| `POSTGRES_PORT` | `5432` |
+| `POSTGRES_USER` | set in config/.env |
+| `POSTGRES_PASSWORD` | set in config/.env |
+| `POSTGRES_DB` | set in config/.env |
+| `MONGODB_URI` | `mongodb://mongodb:27017` (or with auth) |
+| `GOOGLE_PLACES_API_KEY` | set in config/.env |
+
+Use one **schema per app** in Postgres and one **database per app** in MongoDB. Create tables/collections on startup if they don't exist. Never use SQLite or in-container storage.
+
+---
+
+## Stop an App
 
 ```bash
 curl -s -X POST http://deployer:5000/stop \
   -H "Content-Type: application/json" \
-  -d '{"app_name": "<app-name>"}'
+  -d '{"app_name": "my-app"}'
 ```
 
 Stops and removes the container. Does not delete source code or DNS record.
 
-## Check status
+---
+
+## Status & Logs
 
 ```bash
 # All apps
 curl -s http://deployer:5000/status
 
 # One app
-curl -s "http://deployer:5000/status?app_name=<app-name>"
+curl -s "http://deployer:5000/status?app_name=my-app"
+
+# Logs (last 50 lines)
+curl -s "http://deployer:5000/logs/my-app?lines=50"
 ```
 
-## View logs
-
-```bash
-curl -s "http://deployer:5000/logs/<app-name>?lines=50"
-```
-
-Shows the last N lines of container logs (default: 50).
+---
 
 ## Rules
 
-- **NEVER run Docker commands directly.** Always use the Deployer API.
-- App names must be lowercase with hyphens: `my-app`, not `MyApp` or `my_app`.
-- The deployer reads environment variables from `config/.env`. Do not hardcode Cloudflare tokens or domains.
-- If deployment fails, read the `output` field in the JSON response and fix the issue (usually a Dockerfile problem or port conflict).
+- App names: lowercase with hyphens (`my-app`, not `MyApp`)
+- A `Dockerfile` must exist in the app directory before deploying
+- All deployed containers are named `openclaw-<app-name>` -- this is enforced by the deployer. Never use a different name.
+- If deployment fails, read the `output` field for the error -- it usually points to a Dockerfile issue or wrong port
+- Never hardcode credentials; rely on injected env vars
