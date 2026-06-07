@@ -44,164 +44,20 @@ So /home/node/.openclaw/workspace/apps/my-app/ → /workspace/apps/my-app/
 - `config/.env` — credentials (deployer only)
 - `deploy-scripts/` — deploy scripts (deployer only)
 
-## How to Build an App
+## App Registry
 
-### Step 1: Clarify Requirements
+All apps deployed on pocketfusion.in. **Check before building** (avoid name conflicts). **Update after every deploy or removal.** Also keep `apps/registry.json` (at `/home/node/.openclaw/workspace/apps/registry.json`) in sync — it's the machine-readable version read by the deployer and the www landing page.
 
-Ask the user what they need (if the request is ambiguous). Keep questions short -- they're on WhatsApp. Cover:
-- What the app does (core features)
-- Design preferences (dark mode, colors, mobile-first)
-- Persistent storage needed?
-
-If the request is clear (e.g., "Deploy nginx"), skip clarification.
-
-### Step 2: Plan
-
-Decide:
-- **Tech stack** -- prefer lightweight options (static HTML/nginx, React/nginx, Node, Go, Python)
-- **Port** -- the port the app listens on inside its container
-- **Persistent data** -- use shared databases, never in-container storage
-
-Tell the user briefly: "I'll build a React app with nginx. Deploying to my-app.pocketfusion.in."
-
-### Step 3: Write Code
-
-Spawn sub-agents to write the app files. Each sub-agent handles 1-3 files with clear, specific instructions. Run independent sub-agents in parallel.
-
-### Step 4: Write the Dockerfile
-
-The app directory **must** have a `Dockerfile`. Rules:
-- Use multi-stage builds when appropriate (build stage + lightweight runtime stage)
-- **EXPOSE the correct port** -- this is what you pass to the deploy API
-- For web apps: serve with nginx on port 80
-- Keep the final image small (alpine base images)
-- Add a health check
-
-**React/static app example:**
-```dockerfile
-FROM node:22-alpine AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 80
-HEALTHCHECK CMD wget -q --spider http://localhost/ || exit 1
-```
-
-**Node.js backend example:**
-```dockerfile
-FROM node:22-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY . .
-EXPOSE 3000
-HEALTHCHECK CMD wget -q --spider http://localhost:3000/health || exit 1
-CMD ["node", "server.js"]
-```
-
-**Important:** Do NOT put secrets or `.env` files in the Docker image. All credentials are injected at runtime as environment variables by the deployer (see below).
-
-### Step 5: Deploy via Deployer API
-
-**Standard deploy:**
-```bash
-curl -s -X POST http://deployer:5000/deploy \
-  -H "Content-Type: application/json" \
-  -d '{"app_name": "my-app", "port": 80}'
-```
-
-**Password-protected deploy** (when user asks for secure/private access, or app has a `.secure-deploy` file):
-```bash
-curl -s -X POST http://deployer:5000/deploy \
-  -H "Content-Type: application/json" \
-  -d '{"app_name": "my-app", "port": 80, "basic_auth": true}'
-```
-This enables Traefik HTTP Basic Auth — visitors must enter the credentials set in `config/.env` (`BASIC_AUTH_USER` / `BASIC_AUTH_PASS`) to access the app.
-
-**What the deployer does:**
-1. Reads `config/.env` (mounted from the host) for Cloudflare and other credentials
-2. Creates a Cloudflare DNS CNAME: `<app-name>.pocketfusion.in`
-3. Generates `docker-compose.yml` with Traefik labels (HTTPS, cert resolver, routing)
-4. Runs `docker compose build --no-cache` using the app's `Dockerfile`
-5. Runs `docker compose up -d` on the `openclaw_network` — container is named **`openclaw-<app-name>`**
-6. Waits 3 seconds and verifies a container named `openclaw-<app-name>` is in `Up` state
-7. Returns `{"success": true/false, "output": "...", "exit_code": N}`
-
-On success, the app is live at `https://<app-name>.pocketfusion.in` with a valid TLS cert.
-
-> **Container naming:** every deployed container is always named `openclaw-<app-name>` (e.g. `openclaw-sip-calculator`). The deployer enforces this and will fail if the container is not running under that name. Never manually name containers differently.
-
-### Step 6: Verify and Deliver
-
-- `"success": true` → tell the user the live URL
-- `"success": false` → read `"output"` for the error, fix it, retry. Never tell the user "it failed" without fixing it first.
-
-## Environment Variables Available in Your App
-
-The deployer injects these variables from `config/.env` into every deployed container at runtime. Your app code reads them as normal environment variables -- **no `.env` file needed inside the image**.
-
-| Variable | Description |
-|---|---|
-| `POSTGRES_HOST` | PostgreSQL hostname (`postgres`) |
-| `POSTGRES_PORT` | PostgreSQL port (`5432`) |
-| `POSTGRES_USER` | PostgreSQL username |
-| `POSTGRES_PASSWORD` | PostgreSQL password |
-| `POSTGRES_DB` | PostgreSQL database name |
-| `MONGODB_URI` | MongoDB connection URI |
-| `GOOGLE_PLACES_API_KEY` | Google Places API key |
-
-**Use one schema per app in Postgres** (e.g. `flashcard_app`), and one database per app in MongoDB. Create tables/collections on startup if they don't exist.
-
-**Never use SQLite or file-based databases.** Data inside the container is lost on redeploy. Always use the shared Postgres or MongoDB.
-
-## Deployer API Reference
-
-### Deploy (standard)
-```bash
-curl -s -X POST http://deployer:5000/deploy \
-  -H "Content-Type: application/json" \
-  -d '{"app_name": "my-app", "port": 80}'
-```
-
-### Deploy with Basic Auth (password-protected)
-For apps that should be behind HTTP Basic Auth. Traefik will prompt for a username/password. Uses credentials from `config/.env` (`BASIC_AUTH_USER`, `BASIC_AUTH_PASS`).
-
-```bash
-curl -s -X POST http://deployer:5000/deploy \
-  -H "Content-Type: application/json" \
-  -d '{"app_name": "my-app", "port": 3000, "basic_auth": true}'
-```
-
-Use this when the user asks for a "secure" or "password-protected" deploy, or when the app directory has a `.secure-deploy` file.
-
-### Stop
-```bash
-curl -s -X POST http://deployer:5000/stop \
-  -H "Content-Type: application/json" \
-  -d '{"app_name": "my-app"}'
-```
-Stops and removes the container. Does NOT delete source files or DNS record.
-
-### Status
-```bash
-curl -s http://deployer:5000/status
-curl -s "http://deployer:5000/status?app_name=my-app"
-```
-
-### Logs
-```bash
-curl -s "http://deployer:5000/logs/my-app?lines=50"
-```
-
-### Health
-```bash
-curl -s http://deployer:5000/health
-```
+| Name | Port | Domain | Tech | Secure | Description |
+|---|---|---|---|---|---|
+| `www` | 3000 | www.pocketfusion.in | Node/Express | No | Main landing page — shows all deployed apps. Always-on. |
+| `grocery` | 3000 | grocery.pocketfusion.in | Node/Express + PostgreSQL | No | Shared grocery list, recipes, meal planning. Alexa at `/alexa`. Brave API + Claude Haiku for recipes/calories. |
+| `lead-finder` | 3000 | lead-finder.pocketfusion.in | Node/Express + PostgreSQL | No | Find local businesses that need websites. Google Places API. |
+| `flashcards` | 3000 | flashcards.pocketfusion.in | React/Vite + Node/Express + PostgreSQL + GCS | No | Flashcard study app with decks, spaced repetition, and image uploads to GCS. |
+| `sip` | 80 | sip.pocketfusion.in | React/Vite + nginx | No | SIP calculator with projections and charts. Static frontend. |
+| `sood-mortgages` | 80 | sood-mortgages.pocketfusion.in | Static HTML + nginx | No | Mortgage expert brochure site — Sood Mortgages Group, Surrey BC. |
+| `duck` | 80 | duck.pocketfusion.in | Static HTML + nginx | No | Talking Duck — interactive frontend toy. |
+| `aakruti` | 80 | aakruti.pocketfusion.in | Static HTML + nginx | No | Women's clothing store landing page — Nalgonda, India. |
 
 ## Branding
 
@@ -215,8 +71,9 @@ Every app must support **dark mode and light mode** (toggle).
 3. Never run Docker commands -- always use the Deployer API
 4. App names: lowercase with hyphens (`sip-calculator`, not `SipCalculator`)
 5. Containers are always named `openclaw-<app-name>` -- the deployer enforces and verifies this
-6. Keep WhatsApp messages short -- bullet points, no walls of text
+6. **Silent execution** — do not narrate steps to the user while working. No "spawning sub-agent", no "writing Dockerfile", no progress updates. Only speak to ask a clarifying question, report an error, or deliver the final result.
 7. Each sub-agent handles 1-3 files with specific instructions
 8. If a deploy fails, read the error and fix it before telling the user
 9. For persistent data, always use the injected Postgres or MongoDB env vars
 10. Never hardcode credentials or put `.env` files in the Docker image
+11. For file/image storage, use Google Cloud Storage via the injected `GOOGLE_APPLICATION_CREDENTIALS` and `GCS_BUCKET_NAME` env vars (available in every app when the GCS key is configured)

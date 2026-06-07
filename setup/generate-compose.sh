@@ -88,6 +88,8 @@ services:
     environment:
       WORKSPACE_DIR: /workspace
       SCRIPTS_DIR: /deploy-scripts
+      # Host path to the GCS service account key, used when generating app docker-compose files
+      GCS_KEY_HOST_PATH: ${SCRIPT_DIR}/deployer-workspace/config/gcs_key.json
     volumes:
       # Docker socket - deployer is the ONLY container with Docker access
       - /var/run/docker.sock:/var/run/docker.sock
@@ -95,6 +97,8 @@ services:
       - ${SCRIPT_DIR}/deployer-workspace/deploy-scripts:/deploy-scripts:ro
       # Config env (read-only)
       - ${SCRIPT_DIR}/deployer-workspace/config/.env:/workspace/config/.env:ro
+      # GCS service account key (read-only, injected into apps that need it)
+      - ${SCRIPT_DIR}/deployer-workspace/config/gcs_key.json:/workspace/config/gcs_key.json:ro
       # Shared folders (rw - needs to generate docker-compose.yml and build images)
       - ${SCRIPT_DIR}/apps:/workspace/apps
       - ${SCRIPT_DIR}/shared:/workspace/shared

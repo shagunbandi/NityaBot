@@ -60,14 +60,14 @@ curl -s -X POST http://deployer:5000/deploy \
 
 **What this does, step by step:**
 1. Reads credentials from `config/.env` (mounted from the host)
-2. Creates a Cloudflare DNS CNAME: `my-app.pocketfusion.in`
+2. Creates a Cloudflare DNS CNAME: `<app-name>.<your-domain>`
 3. Generates `docker-compose.yml` with Traefik labels (HTTPS, TLS cert, routing rule)
 4. Builds the Docker image from the `Dockerfile` in the app directory
 5. Starts the container on the `openclaw_network` — named **`openclaw-<app-name>`** (e.g. `openclaw-my-app`)
 6. Verifies a container named `openclaw-<app-name>` is in `Up` state — fails if not
 7. Returns `{"success": true/false, "output": "...", "exit_code": N}`
 
-On success, the app is live at `https://my-app.pocketfusion.in` with a valid TLS cert.
+On success, the app is live at `https://<app-name>.<your-domain>` with a valid TLS cert.
 
 ---
 
@@ -98,8 +98,12 @@ The deployer injects these into every app container at runtime from `config/.env
 | `POSTGRES_DB` | set in config/.env |
 | `MONGODB_URI` | `mongodb://mongodb:27017` (or with auth) |
 | `GOOGLE_PLACES_API_KEY` | set in config/.env |
+| `GOOGLE_APPLICATION_CREDENTIALS` | `/secrets/gcs_key.json` (injected when `deployer-workspace/config/gcs_key.json` exists) |
+| `GCS_BUCKET_NAME` | set in config/.env (injected alongside the credentials) |
 
 Use one **schema per app** in Postgres and one **database per app** in MongoDB. Create tables/collections on startup if they don't exist. Never use SQLite or in-container storage.
+
+For **Google Cloud Storage**: apps receive `GOOGLE_APPLICATION_CREDENTIALS` and `GCS_BUCKET_NAME` automatically when the GCS key is configured. Use `@google-cloud/storage` with `new Storage({ keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS })` — no extra setup needed.
 
 ---
 

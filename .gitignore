@@ -3,6 +3,7 @@ justfile
 
 # Secrets
 deployer-workspace/config/.env
+deployer-workspace/config/gcs_key.json
 
 # OpenClaw runtime
 .openclaw/

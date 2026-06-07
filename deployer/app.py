@@ -5,12 +5,14 @@ This is the ONLY container with Docker socket access. It exposes endpoints
 that map to the deploy scripts. OpenClaw calls these via HTTP.
 
 Endpoints:
-    POST /deploy     Deploy an app (add "basic_auth": true for HTTP Basic Auth)
-    POST /stop       Stop a running app
-    GET  /status     List all apps or one app's status
-    GET  /logs/<name> Get app container logs
+    POST /deploy       Deploy an app (add "basic_auth": true for HTTP Basic Auth)
+    POST /stop         Stop a running app
+    GET  /status       List all apps or one app's status
+    GET  /logs/<name>  Get app container logs
+    GET  /registry     Return the app registry (apps/registry.json)
 """
 
+import json
 import os
 import re
 import subprocess
@@ -23,6 +25,7 @@ app = Flask(__name__)
 SCRIPTS_DIR = os.environ.get("SCRIPTS_DIR", "/deploy-scripts")
 WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR", "/workspace")
 ENV_FILE = os.path.join(WORKSPACE_DIR, "config", ".env")
+REGISTRY_FILE = os.path.join(WORKSPACE_DIR, "apps", "registry.json")
 VALID_APP_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
@@ -213,6 +216,19 @@ def logs(app_name):
     result = run_script("logs-app.sh", [app_name, lines])
     status_code = 200 if result["success"] else 500
     return jsonify(result), status_code
+
+
+@app.route("/registry", methods=["GET"])
+def registry():
+    """Return the app registry from apps/registry.json."""
+    if not os.path.isfile(REGISTRY_FILE):
+        return jsonify({"success": False, "error": "registry.json not found", "apps": []}), 404
+    try:
+        with open(REGISTRY_FILE, "r") as f:
+            data = json.load(f)
+        return jsonify({"success": True, **data})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "apps": []}), 500
 
 
 @app.route("/health", methods=["GET"])

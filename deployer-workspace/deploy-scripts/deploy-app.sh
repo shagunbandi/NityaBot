@@ -110,6 +110,10 @@ POSTGRES_DB="${POSTGRES_DB:-openclaw}"
 MONGODB_URI="${MONGODB_URI:-mongodb://mongodb:27017}"
 GOOGLE_PLACES_API_KEY="${GOOGLE_PLACES_API_KEY:-}"
 
+# GCS credentials (optional - only injected when the key file exists on the host)
+GCS_BUCKET_NAME="${GCS_BUCKET_NAME:-}"
+GCS_KEY_HOST_PATH="${GCS_KEY_HOST_PATH:-}"
+
 DOMAIN="${APP_NAME}.${CF_BASE_DOMAIN}"
 
 # --- Validate domain suffix ---
@@ -217,6 +221,22 @@ if [ "$USE_BASIC_AUTH" = true ]; then
       - \"traefik.http.routers.${APP_NAME}.middlewares=${MIDDLEWARE_NAME}@docker\""
 fi
 
+# Build optional GCS volume mount block (only when a key file is configured)
+# GCS_KEY_HOST_PATH is the path on the Docker host (used in volume mounts).
+# The same file is mounted into the deployer at /workspace/config/gcs_key.json,
+# so we check existence using that container-side path.
+GCS_KEY_CONTAINER_PATH="/workspace/config/gcs_key.json"
+GCS_VOLUME_BLOCK=""
+GCS_ENV_BLOCK=""
+if [ -n "${GCS_KEY_HOST_PATH:-}" ] && [ -f "${GCS_KEY_CONTAINER_PATH}" ]; then
+  GCS_ENV_BLOCK="
+      - \"GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcs_key.json\"
+      - \"GCS_BUCKET_NAME=${GCS_BUCKET_NAME}\""
+  GCS_VOLUME_BLOCK="
+    volumes:
+      - \"${GCS_KEY_HOST_PATH}:/secrets/gcs_key.json:ro\""
+fi
+
 cat > "$APP_DIR/docker-compose.yml" << COMPOSE_EOF
 services:
   ${APP_NAME}:
@@ -232,10 +252,10 @@ services:
       - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
       - "POSTGRES_DB=${POSTGRES_DB}"
       - "MONGODB_URI=${MONGODB_URI}"
-      - "GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}"
+      - "GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}"${GCS_ENV_BLOCK}
     networks:
       - ${DOCKER_NETWORK}
-    labels:${ROUTER_LABELS}
+    labels:${ROUTER_LABELS}${GCS_VOLUME_BLOCK}
 
 networks:
   ${DOCKER_NETWORK}:
